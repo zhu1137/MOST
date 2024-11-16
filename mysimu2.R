@@ -218,32 +218,3 @@ t2 <- Sys.time()
 t2-t1
 result
 
-plot(r.ss, log10(result[[1]][,1]), xlab=expression(n), ylab = expression(log["10"](MSE)), pch=1,lwd=2,
-     ylim=c(min(log10(result[[1]])), max(log10(result[[1]]))),xlim=c(min(r.ss), max(r.ss)), type="o",main = "case 1")
-pp <- dim(result[[1]])[2]
-for(i in 2:pp){
-  lines(r.ss, log10(result[[1]][,i]), type="o", pch=(i), lty=i, col=i,lwd=2)
-}
-
-legend("topright", lty=1:pp, pch=(1:pp), col=1:pp,
-       legend=c("UNIF","LEV","IBOSS","DS","QQOSS"),cex=0.75)
-
-plot(r.ss, log10(result[[2]][,1]), xlab=expression(n), ylab = expression(log["10"](MSE)), pch=1,lwd=2,
-     ylim=c(min(log10(result[[2]])), max(log10(result[[2]]))),xlim=c(min(r.ss), max(r.ss)), type="o",main = "case 1")
-pp <- dim(result[[2]])[2]
-for(i in 2:pp){
-  lines(r.ss, log10(result[[2]][,i]), type="o", pch=(i), lty=i, col=i,lwd=2)
-}
-
-legend("topright", lty=1:pp, pch=(1:pp), col=1:pp,
-       legend=c("UNIF","LEV","IBOSS","DS","QQOSS"),cex=0.75)
-
-plot(r.ss, log10(result[[3]][,1]), xlab=expression(n), ylab = expression(log["10"](MSE)), pch=1,lwd=2,
-     ylim=c(min(log10(result[[3]])), max(log10(result[[3]]))),xlim=c(min(r.ss), max(r.ss)), type="o",main = "case 1")
-pp <- dim(result[[3]])[2]
-for(i in 2:pp){
-  lines(r.ss, log10(result[[3]][,i]), type="o", pch=(i), lty=i, col=i,lwd=2)
-}
-
-legend("topright", lty=1:pp, pch=(1:pp), col=1:pp,
-       legend=c("UNIF","LEV","IBOSS","DS","QQOSS"),cex=0.75)

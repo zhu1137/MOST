@@ -1,0 +1,249 @@
+# This R code calculates the MSE as the subdata size n varies,and N=5*10^4
+
+# It is capable of simulating three data distribution scenarios (from case1 to case3) 
+
+# Using the "mysimu2" function, we can obtain the MSE for the parameter and MSPE for response
+
+###################################
+###################################
+
+rm(list=ls())
+library(MASS)
+
+Rcpp::sourceCpp('qqoss.cpp')
+iboss=function(x,k){
+  ind=NULL
+  m = ncol(x)
+  r = rep(floor(k/2/m),m)
+  if(sum(r)<k/2) r[1:((k-2*sum(r))/2)] = r[1:((k-2*sum(r))/2)]+1
+  candi=1:nrow(x)
+  for (i in 1:m)
+  {
+    xi = x[candi,i]
+    j1 = top_k(xi,r[i])+1
+    j2 = bottom_k(xi,r[i])+1
+    j = unique(c(j1,j2))
+    if(length(j)<2*r[i]) {jj=(1:length(candi))[-j];j=c(j,jj[1:(2*r[i]-length(j))])}
+    ind = c(ind,candi[j])
+    candi=setdiff(candi,ind) #???A????B????
+  }
+  return(ind)
+}
+scalex=function(a){
+  2*(a-min(a))/(max(a)-min(a))-1
+}
+Ers=function(x,y,id,b){
+  bh = lm(y[id,]~x[id,])$coefficients
+  # mses = sum((bh[-1] - b)^2)
+  mse = sum((bh - c(1,b))^2)
+  # mspe = mean((y - cbind(1,x)%*%bh)^2)
+  # wspe = (y[id,] - cbind(1,x)[id,]%*%bh)^2
+  return(list(mse, bh))
+}
+
+mysimu=function(p1, p2, nloop, r.ss, N, N_te, dist_x="case1"){
+  
+  q <-c()
+  for (j in 1:p1) {
+    q[j] <- j +  1
+  }
+  tbeta <- rep(1, sum(q)-p1+p2)
+  sigma_1 <- diag(0.5,p1,p1)+matrix(0.5,p1,p1)
+  sigma_2 <- diag(0.5,p2,p2)+matrix(0.5,p2,p2)
+  lrs <- length(r.ss)
+  names1 <- c("mse_unif", "mse_lev", "mse_IBOSS", "mse_QQOSS", "mse_DS",
+              "mspe_unif","mspe_lev" ,"mspe_IBOSS","mspe_QQOSS","mspe_DS")
+  for(name in names1) {
+    assign(name, matrix(NA, 1, nloop*lrs), envir = .GlobalEnv)
+  }
+  
+  # set.seed(1234)
+  # XX1_te <- matrix(,N_te,p1)
+  # if(dist_x=="case1"){
+  #   for (i in 1:p1) {
+  #     XX1_te[,i] <- as.matrix(DRN(1:q[i], 1:q[i]/sum(1:q[i]), N_te))
+  #   }
+  #   XZ_te <- matrix(runif(N_te*p2, -1, 1), N_te, p2)
+  # }
+  # if(dist_x=="case2"){
+  #   XX_te <- mvrnorm(N_te, rep(0, p1), sigma_1)  #### generate qualitative factors
+  #   for (j in 1:p1) {
+  #     breaks <- c(-Inf, seq(-3 + 6/q[j], 3 - 6/q[j], length.out = q[j] - 1), Inf)
+  #     XX1_te[, j] <- findInterval(XX_te[, j], breaks)
+  #   }       
+  #   XZ_te <- matrix(runif(N_te*p2, -1, 1), N_te, p2)
+  # }
+  # if(dist_x=="case3"){
+  #   XX_te <- mvrnorm(N_te, rep(0, p1), sigma_1)  #### generate qualitative factors
+  #   for (j in 1:p1) {
+  #     breaks <- c(-Inf, seq(-3 + 6/q[j], 3 - 6/q[j], length.out = q[j] - 1), Inf)
+  #     XX1_te[, j] <- findInterval(XX_te[, j], breaks)
+  #   }       
+  #   XZ_te <- mvrnorm(N_te, rep(0, p2), sigma_2)
+  # }
+  # if(dist_x=="case4"){
+  #   XX_te <- mvrnorm(N_te, rep(0, p1), sigma_1)  #### generate qualitative factors
+  #   for (j in 1:p1) {
+  #     breaks <- c(-Inf, seq(-3 + 6/q[j], 3 - 6/q[j], length.out = q[j] - 1), Inf)
+  #     XX1_te[, j] <- findInterval(XX_te[, j], breaks)
+  #   }
+  #   XZ_te <- rmvt(N_te, sigma_2, delta = rep(0, p2), df = 3)
+  # }
+  # XX2_te <- dum(XX1_te, q)
+  # ep_te <- matrix(rnorm(N_te, mean = 0, sd = sqrt(1)))
+  # Y_te <- 1 + cbind(XX2_te, XZ_te) %*% tbeta + ep_te
+  
+  set.seed(1234)
+  XX1_te <- matrix(,N_te,p1)
+  for (i in 1:p1) {
+    XX1_te[,i] <- as.matrix(DRN(1:q[i], rep(1/q[i],q[i]), N_te))
+  }
+  XX2_te <- dum(XX1_te, q)
+  XZ_te <- matrix(runif(N_te*p2, -1, 1), N_te, p2)
+  ep_te <- matrix(rnorm(N_te, mean = 0, sd = sqrt(1)))
+  Y_te <- 1 + cbind(XX2_te, XZ_te) %*% tbeta + ep_te
+  
+  itr <- 0
+  for (n in r.ss) {
+    
+    for (k in 1:nloop) {
+      if (k%/%100 == k/100) cat(k, "-")
+      itr <- itr+1
+      
+      setseed =  k * 100000 + 100
+      set.seed(setseed)
+      XX1 <- matrix(,N,p1)
+      if(dist_x=="case1"){
+        for (i in 1:p1) {
+          XX1[,i] <- as.matrix(DRN(1:q[i], 1:q[i]/sum(1:q[i]), N))
+        }
+        XZ <- matrix(runif(N*p2, -1, 1), N, p2)
+      }
+      if(dist_x=="case2"){
+        XX <- mvrnorm(N, rep(0, p1), sigma_1)  #### generate qualitative factors
+        for (j in 1:p1) {
+          breaks <- c(-Inf, seq(-3 + 6/q[j], 3 - 6/q[j], length.out = q[j] - 1), Inf)
+          XX1[, j] <- findInterval(XX[, j], breaks)
+        }       
+        XZ <- matrix(runif(N*p2, -1, 1), N, p2)
+      }
+      if(dist_x=="case3"){
+        XX <- mvrnorm(N, rep(0, p1), sigma_1)  #### generate qualitative factors
+        for (j in 1:p1) {
+          breaks <- c(-Inf, seq(-3 + 6/q[j], 3 - 6/q[j], length.out = q[j] - 1), Inf)
+          XX1[, j] <- findInterval(XX[, j], breaks)
+        }       
+        XZ <- mvrnorm(N, rep(0, p2), sigma_2)
+      }
+      if(dist_x=="case4"){
+        XX <- mvrnorm(N, rep(0, p1), sigma_1)  #### generate qualitative factors
+        for (j in 1:p1) {
+          breaks <- c(-Inf, seq(-3 + 6/q[j], 3 - 6/q[j], length.out = q[j] - 1), Inf)
+          XX1[, j] <- findInterval(XX[, j], breaks)
+        }
+        XZ <- rmvt(N, sigma_2, delta = rep(0, p2), df = 3)
+      }
+      XX2 <- dum(XX1, q)
+      ep <- matrix(rnorm(N, mean = 0, sd = sqrt(1)))
+      full_Y <- 1 + cbind(XX2, XZ) %*% tbeta + ep
+      
+      ################################
+      unif_ind <- sample.int(N, size=n, replace = FALSE, prob=rep(1, N)/N)
+      lev_ind <- sample.int(N,size = n,replace = FALSE, prob = lev(cbind(XX2,XZ)))
+      IBOSS_ind <- iboss(cbind(XX2,XZ),n)
+      QQOSS_ind <- OAJ2_qqs(XX1, apply(XZ,2,scalex), n, c(q, rep(2, p2)), 2, 2)
+      DS_ind <- OAJ2_ds(XX1, apply(XZ,2,scalex), n, q, 2, 2)
+      
+      Ers_unif = Ers(cbind(XX2,XZ), full_Y, unif_ind, tbeta)
+      mse_unif[,itr] = Ers_unif[[1]]
+      mspe_unif[,itr] = mean((Y_te - cbind(1, XX2_te,XZ_te)%*%Ers_unif[[2]])^2)
+      
+      Ers_lev = Ers(cbind(XX2,XZ), full_Y, lev_ind, tbeta)
+      mse_lev[,itr] = Ers_lev[[1]]
+      mspe_lev[,itr] = mean((Y_te - cbind(1, XX2_te,XZ_te)%*%Ers_lev[[2]])^2)
+      
+      Ers_IBOSS = Ers(cbind(XX2,XZ), full_Y, IBOSS_ind, tbeta)
+      mse_IBOSS[,itr] = Ers_IBOSS[[1]]
+      mspe_IBOSS[,itr] = mean((Y_te - cbind(1, XX2_te,XZ_te)%*%Ers_IBOSS[[2]])^2)
+      
+      Ers_QQOSS = Ers(cbind(XX2,XZ), full_Y, QQOSS_ind, tbeta)
+      mse_QQOSS[,itr] = Ers_QQOSS[[1]]
+      mspe_QQOSS[,itr] = mean((Y_te - cbind(1, XX2_te,XZ_te)%*%Ers_QQOSS[[2]])^2)
+      
+      Ers_DS = Ers(cbind(XX2,XZ), full_Y, DS_ind, tbeta)
+      mse_DS[,itr] = Ers_DS[[1]]
+      mspe_DS[,itr] = mean((Y_te - cbind(1, XX2_te,XZ_te)%*%Ers_DS[[2]])^2)
+      
+      cat(n,"-",k,"\n")
+    }
+    cat("\n\n")
+  }
+  
+  ####################################################
+  mse.unif <- mse.lev <- mse.iboss <- mse.qqoss <- mse.ds <- c()
+  for (i in 1:lrs) {
+    loc <- ((i-1)*nloop+1):(i*nloop)
+    mse.unif <- c(mse.unif, mean(na.omit(mse_unif[,loc])))
+    mse.lev <- c(mse.lev, mean(na.omit(mse_lev[,loc])))
+    mse.iboss <- c(mse.iboss, mean(na.omit(mse_IBOSS[,loc])))
+    mse.qqoss <- c(mse.qqoss, mean(na.omit(mse_QQOSS[,loc])))
+    mse.ds <- c(mse.ds, mean(na.omit(mse_DS[,loc])))
+  }
+  rec1<-cbind(mse.unif, mse.lev, mse.iboss, mse.ds, mse.qqoss)
+  
+  mspe.unif <- mspe.lev <- mspe.iboss <- mspe.qqoss <- mspe.ds <- c()
+  for (i in 1:lrs) {
+    loc <- ((i-1)*nloop+1):(i*nloop)
+    mspe.unif <- c(mspe.unif, mean(na.omit(mspe_unif[,loc])))
+    mspe.lev <- c(mspe.lev, mean(na.omit(mspe_lev[,loc])))
+    mspe.iboss <- c(mspe.iboss, mean(na.omit(mspe_IBOSS[,loc])))
+    mspe.qqoss <- c(mspe.qqoss, mean(na.omit(mspe_QQOSS[,loc])))
+    mspe.ds <- c(mspe.ds, mean(na.omit(mspe_DS[,loc])))
+  }
+  rec2<-cbind(mspe.unif, mspe.lev, mspe.iboss, mspe.ds, mspe.qqoss)
+  
+  save(rec1,rec2, mse_unif, mse_lev, mse_IBOSS, mse_DS, mse_QQOSS,
+       mspe_unif, mspe_lev, mspe_IBOSS, mspe_DS, mspe_QQOSS,
+       file = paste0(dist_x,"_", N,".Rdata"))
+  
+  return(list(rec1,rec2))  
+}
+
+#########################
+r.ss <- c(1e3, 1.5e3, 2e3, 2.5e3)
+
+t1<- Sys.time()
+result=mysimu(p1=5,p2=50,nloop=200,r.ss,N=5e4,N_te=2e3,dist_x ="case1")
+t2 <- Sys.time()
+t2-t1
+result
+
+plot(r.ss, log10(result[[1]][,1]), xlab=expression(n), ylab = expression(log["10"](MSE)), pch=1,lwd=2,
+     ylim=c(min(log10(result[[1]])), max(log10(result[[1]]))),xlim=c(min(r.ss), max(r.ss)), type="o",main = "case 1")
+pp <- dim(result[[1]])[2]
+for(i in 2:pp){
+  lines(r.ss, log10(result[[1]][,i]), type="o", pch=(i), lty=i, col=i,lwd=2)
+}
+
+legend("topright", lty=1:pp, pch=(1:pp), col=1:pp,
+       legend=c("UNIF","LEV","IBOSS","DS","QQOSS"),cex=0.75)
+
+plot(r.ss, log10(result[[2]][,1]), xlab=expression(n), ylab = expression(log["10"](MSE)), pch=1,lwd=2,
+     ylim=c(min(log10(result[[2]])), max(log10(result[[2]]))),xlim=c(min(r.ss), max(r.ss)), type="o",main = "case 1")
+pp <- dim(result[[2]])[2]
+for(i in 2:pp){
+  lines(r.ss, log10(result[[2]][,i]), type="o", pch=(i), lty=i, col=i,lwd=2)
+}
+
+legend("topright", lty=1:pp, pch=(1:pp), col=1:pp,
+       legend=c("UNIF","LEV","IBOSS","DS","QQOSS"),cex=0.75)
+
+plot(r.ss, log10(result[[3]][,1]), xlab=expression(n), ylab = expression(log["10"](MSE)), pch=1,lwd=2,
+     ylim=c(min(log10(result[[3]])), max(log10(result[[3]]))),xlim=c(min(r.ss), max(r.ss)), type="o",main = "case 1")
+pp <- dim(result[[3]])[2]
+for(i in 2:pp){
+  lines(r.ss, log10(result[[3]][,i]), type="o", pch=(i), lty=i, col=i,lwd=2)
+}
+
+legend("topright", lty=1:pp, pch=(1:pp), col=1:pp,
+       legend=c("UNIF","LEV","IBOSS","DS","QQOSS"),cex=0.75)
